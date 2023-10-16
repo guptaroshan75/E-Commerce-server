@@ -16,6 +16,7 @@ const singleAttributeRouter = require('./routes/AttributeValues.route');
 const freeShippingRouter = require('./routes/FreeShipping.route');
 const upsShippingRouter = require('./routes/UPS.route');
 const path = require('path')
+const cloudinary = require('cloudinary')
 
 if(process.env.NODE_ENV === 'developement'){
     require('dotenv').config();
@@ -29,6 +30,12 @@ connectDatabase();
 app.set("view engine", "ejs");
 app.use(express.json({limit: '50mb'}));
 app.use(cors());
+          
+cloudinary.config({ 
+  cloud_name: process.env.cloud_name, 
+  api_key: process.env.api_key,
+  api_secret: process.env.api_secret,
+});
 
 app.get('/', (req, res) => {
     res.json({
