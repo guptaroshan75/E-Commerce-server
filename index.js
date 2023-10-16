@@ -43,9 +43,9 @@ app.get('/api/image/:filename', (req, res) => {
   const imagePath = path.join(__dirname, 'images', filename);
 
   res.sendFile(imagePath, (err) => {
-    if (err) {
-      res.status(404).send('File not found');
-    }
+      if (err) {
+          res.status(404).send('File not found');
+      }
   });
 });
 
