@@ -1,15 +1,13 @@
 const GalleryModel = require("../model/Gallery.model");
 const multer = require('multer');
+const cloudinary = require('cloudinary')
 
 const storage = multer.diskStorage({
-  destination: function (req, body, cb) {
-    cb(null, './images');
-  },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
   }
 });
-const upload = multer({ storage: storage });
+const handleMultipartData = multer({ storage: storage }).single('galleryImage');
 
 // Get All Gallery
 const getAllGallery = async (req, res) => {
@@ -52,22 +50,60 @@ const getSpecificGallery = async (req, res) => {
 
 //Add the Gallery
 const addGallery = async (req, res) => {
-  upload.single('galleryImage')(req, res, async (err) => {
-    const galleryImage = req.file.filename;
+  handleMultipartData(req, res, async (err) => {
+    const filePath = req.file.path;
     const imageTitle = req.body.imageTitle;
-    try {
-      const newAddGallery = await GalleryModel.create({ galleryImage, imageTitle });
-      res.status(201).json({
-        status: "Success",
-        data: newAddGallery,
-      });
-    } catch (error) {
-      res.status(400).json({
-        status: "Failed",
-        error: error.message,
-      });
-    }
+    const galleryImage = req.file.originalname;
+
+    cloudinary.v2.uploader.upload(filePath, {
+      public_id: galleryImage.substr(0, galleryImage.lastIndexOf('.')),
+    }, async (error, result) => {
+      if (error) {
+        return res.status(400).json({
+          status: "Failed",
+          error: error.message
+        });
+      }
+
+      if (result.secure_url) {
+        try {
+          const newAddGallery = await GalleryModel.create({
+            imageTitle, galleryImage: result.secure_url
+          });
+          res.status(201).json({
+            status: 'Success',
+            data: newAddGallery
+          });
+        } catch (error) {
+          return res.status(500).json({
+            status: "Failed",
+            error: "Error saving to database"
+          });
+        }
+      } else {
+        res.status(400).json({
+          status: "Failed",
+          error: "Invalid Cloudinary response"
+        });
+      }
+    });
   });
+  // upload.single('galleryImage')(req, res, async (err) => {
+  //   const galleryImage = req.file.filename;
+  //   const imageTitle = req.body.imageTitle;
+  //   try {
+  //     const newAddGallery = await GalleryModel.create({ galleryImage, imageTitle })
+  //     res.status(201).json({
+  //       status: "Success",
+  //       data: newAddGallery,
+  //     });
+  //   } catch (error) {
+  //     res.status(400).json({
+  //       status: "Failed",
+  //       error: error.message,
+  //     });
+  //   }
+  // });
 };
 
 module.exports = { getAllGallery, getSpecificGallery, addGallery };

@@ -1,15 +1,13 @@
 const BlogModel = require("../model/Blog.model");
 const multer = require('multer');
+const cloudinary = require('cloudinary')
 
 const storage = multer.diskStorage({
-  destination: function (req, body, cb) {
-    cb(null, './images');
-  },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
   }
 });
-const handleMultipartData = multer({ storage: storage });
+const handleMultipartData = multer({ storage: storage }).single('blogImage');
 
 // Get All Blogs
 const getAllBlogs = async (req, res) => {
@@ -50,48 +48,47 @@ const getSpecificBlog = async (req, res) => {
   }
 };
 
-//Add the Blogs
+// Add the Blogs
 const addBlogs = async (req, res) => {
   handleMultipartData(req, res, async (err) => {
-    const blogImage = req.file.filename;
+    const filePath = req.file.path;
     const blogTitle = req.body.blogTitle;
-    cloudinary.v2.uploader.upload(blogImage, async (error, result) => {
+    const description = req.body.description;
+    const blogImage = req.file.originalname;
+
+    cloudinary.v2.uploader.upload(filePath, {
+      public_id: blogImage.substr(0, blogImage.lastIndexOf('.')),
+    }, async (error, result) => {
+      if (error) {
+        return res.status(400).json({
+          status: "Failed",
+          error: error.message
+        });
+      }
+
       if (result.secure_url) {
-        let newAddBlogs
         try {
-            newAddBlogs = await BlogModel.create({
-            blogTitle,
-            description,
-            blogImage: result.secure_url,
+          const newAddBlogs = await BlogModel.create({
+            blogTitle, description, blogImage: result.secure_url,
+          });
+          res.status(201).json({
+            status: 'Success',
+            data: newAddBlogs
           });
         } catch (error) {
-          res.send(error.message);
+          return res.status(500).json({
+            status: "Failed",
+            error: "Error saving to database"
+          });
         }
-
-        res.status(201).send(newAddBlogs);
       } else {
-        res.send(error.message);
+        res.status(400).json({
+          status: "Failed",
+          error: "Invalid Cloudinary response"
+        });
       }
     });
   });
 };
-// upload.single('blogImage')(req, res, async (err) => {
-// const blogImage = req.file.filename;
-// const blogTitle = req.body.blogTitle;
-// const description = req.body.description;
-//   try {
-//     const newAddBlogs = await BlogModel.create({ blogTitle, blogImage, description });
-//     res.status(201).json({
-//       status: "Success",
-//       data: newAddBlogs,
-//     });
-//   } catch (error) {
-//     res.status(400).json({
-//       status: "Failed",
-//       error: error.message,
-//     });
-//   }
-// });
-// };
 
 module.exports = { getAllBlogs, addBlogs, getSpecificBlog };

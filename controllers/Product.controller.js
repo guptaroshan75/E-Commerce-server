@@ -2,16 +2,18 @@ const CategoriesModel = require("../model/Categories.model");
 const ProductModel = require("../model/Product.model");
 const AttributeModel = require('../model/Attributes.model');
 const multer = require('multer');
+const cloudinary = require('cloudinary')
 
 const storage = multer.diskStorage({
-    destination: function (req, body, cb) {
-        cb(null, './images');
-    },
+    // destination: function (req, body, cb) {
+    //     cb(null, './images');
+    // },
     filename: function (req, file, cb) {
         cb(null, file.originalname);
     }
 });
-const upload = multer({ storage: storage });
+const handleMultipartData = multer({ storage: storage }).single('myImage');
+
 
 // Get All Products
 const getAllProducts = async (req, res) => {
@@ -103,27 +105,48 @@ const getSpecificCategoryProducts = async (req, res) => {
 
 // Add the Products
 const addProducts = async (req, res) => {
-    upload.single('myImage')(req, res, async (err) => {
-        const myImage = req.file.filename;
-        try {
-            const newAddProducts = await ProductModel.create({ myImage }, req.body);
-            res.status(201).json({
-                status: "Success",
-                data: newAddProducts,
-            });
-        } catch (error) {
-            res.status(400).json({
-                status: "Failed",
-                error: error.message,
-            });
-        }
+    handleMultipartData(req, res, async (err) => {
+        const filePath = req.file.path;
+        const myImage = req.file.originalname;
+        cloudinary.v2.uploader.upload(filePath, req.body, {
+            public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+        }, async (error, result) => {
+            if (error) {
+                return res.status(400).json({
+                    status: "Failed",
+                    error: error.message
+                });
+            }
+
+            if (result.secure_url) {
+                try {
+                    const newAddProducts = await ProductModel.create({ myImage: result.secure_url },
+                        req.body);
+                    res.status(201).json({
+                        status: 'Success',
+                        data: newAddProducts
+                    });
+                } catch (error) {
+                    return res.status(500).json({
+                        status: "Failed",
+                        error: "Error saving to database"
+                    });
+                }
+            } else {
+                res.status(400).json({
+                    status: "Failed",
+                    error: "Invalid Cloudinary response"
+                });
+            }
+        });
     });
 }
 
 // Add the product with category name and attribute name
 const addAttributeValue = async (req, res) => {
-    upload.single('myImage')(req, res, async (err) => {
-        const myImage = req.file.filename;
+    handleMultipartData(req, res, async (err) => {
+        const filePath = req.file.path;
+        const myImage = req.file.originalname;
         const catName = req.params.catName;
         const displayName = req.params.displayName;
         const categoryId = await CategoriesModel.findOne({ catName: catName });
@@ -131,23 +154,45 @@ const addAttributeValue = async (req, res) => {
         const { productName, description, productSKU, productBarcode,
             category, attributes, attributesValue, price, salePrice,
             productQuantity, productSlug, productTags, published } = req.body
-        try {
-            const addproductWithCat = await ProductModel.create({
-                categoryId: categoryId._id, productName, description, myImage: myImage, productSKU,
-                productBarcode, category, attributes, attributesValue, price, salePrice,
-                productQuantity, productSlug, productTags, published, attributeId: attributeId._id
-            });
-            res.status(201).json({
-                status: "Success",
-                data: addproductWithCat,
-            });
-        } catch (error) {
-            res.status(400).json({
-                status: "Failed",
-                error: error.message,
-            });
-        }
-    })
+        cloudinary.v2.uploader.upload(filePath, {
+            public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+            categoryId: categoryId._id, productName, description, myImage: myImage, productSKU,
+            productBarcode, category, attributes, attributesValue, price, salePrice,
+            productQuantity, productSlug, productTags, published, attributeId: attributeId._id
+        }, async (error, result) => {
+            if (error) {
+                return res.status(400).json({
+                    status: "Failed",
+                    error: error.message
+                });
+            }
+
+            if (result.secure_url) {
+                try {
+                    const addproductWithCat = await ProductModel.create({
+                        categoryId: categoryId._id, productName, description, productSKU, category,
+                        productBarcode, attributes, attributesValue, price, salePrice,
+                        productQuantity, productSlug, productTags, published, attributeId: attributeId._id,
+                        myImage: result.secure_url
+                    });
+                    res.status(201).json({
+                        status: 'Success',
+                        data: addproductWithCat
+                    });
+                } catch (error) {
+                    return res.status(500).json({
+                        status: "Failed",
+                        error: "Error saving to database"
+                    });
+                }
+            } else {
+                res.status(400).json({
+                    status: "Failed",
+                    error: "Invalid Cloudinary response"
+                });
+            }
+        });
+    });
 }
 
 // Get Specific category and attribute With all product
@@ -211,81 +256,134 @@ const updateProductVisble = async (req, res) => {
 
 // Update the Product
 // const updateProduct = (req, res) => {
-//     upload.single('myImage')(req, res, async (err) => {
-//         if (err) {
-//             return res.status(400).json({
-//                 status: 'Failed',
-//                 error: err.message,
-//             });
-//         }
-//         const myImage = req.file ? req.file.filename : req.body.myImage;
-
-//         const updatedProductData = {
-//             myImage, 
-//             productName: req.body.productName,
-//             description: req.body.description,
-//             productSKU: req.body.productSKU,
-//             productBarcode: req.body.productBarcode,
-//             category: req.body.category,
-//             attributes: req.body.attributes,
-//             attributesValue: req.body.attributesValue,
-//             price: req.body.price,
-//             salePrice: req.body.salePrice,
-//             productQuantity: req.body.productQuantity,
-//             productSlug: req.body.productSlug,
-//             productTags: req.body.productTags,
-//         };
-
-//         try {
-//             const updatedProduct = await ProductModel.findByIdAndUpdate(
-//                 req.params.id,
-//                 updatedProductData,
-//                 { new: true }
-//             );
-
-//             if (!updatedProduct) {
-//                 return res.status(404).json({
-//                     status: 'Not Found',
-//                     error: 'Product not found',
+//     handleMultipartData(req, res, async (err) => {
+//         const filePath = req.file ? req.file.path : null;
+//         const myImage = req.file ? req.file.originalname : null;
+//         const { productName, description, productSKU, productBarcode, category, attributes,
+//             attributesValue, price, salePrice, productQuantity, productSlug, productTags
+//         } = req.body;
+//         cloudinary.v2.uploader.upload(filePath, {
+//             productName, description, productSKU, productBarcode, category, attributes,
+//             attributesValue, price, salePrice, productQuantity, productSlug, productTags,
+//             public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+//         }, async (error, result) => {
+//             if (error) {
+//                 return res.status(400).json({
+//                     status: "Failed",
+//                     error: error.message
 //                 });
 //             }
 
-//             res.json({
-//                 status: 'Success',
-//                 data: updatedProduct,
-//             });
-//         } catch (error) {
-//             res.status(500).json({
-//                 status: 'Failed',
-//                 error: 'An error occurred while updating the product.',
-//             });
-//         }
+//             if (result.secure_url) {
+//                 ProductModel.findByIdAndUpdate(req.params.id, {
+//                     productName, description, productSKU, productBarcode, category, attributes,
+//                     attributesValue, price, salePrice, productQuantity, productSlug, 
+//                     productTags, myImage: result.secure_url
+//                 }, {
+//                     new: true,
+//                 })
+//                 .then(() => {
+//                     res.json({
+//                         msg: "Product Updated Successfully",
+//                     });
+//                 })
+//                 .catch(error => {
+//                     console.log(error);
+//                     res.json({ error: "Failed to Perform Update Operation" });
+//                 });
+//             } else {
+//                 res.status(400).json({
+//                     status: "Failed",
+//                     error: "Invalid Cloudinary response"
+//                 });
+//             }
+//         });
 //     });
+//     // upload.single('myImage')(req, res, async (err) => {
+//     //     const myImage = req.file.filename;
+//     //     const { productName, description, productSKU, productBarcode, category, attributes,
+//     //         attributesValue, price, salePrice, productQuantity, productSlug, productTags
+//     //     } = req.body;
+//     //     ProductModel.findByIdAndUpdate(req.params.id, {
+//     //         myImage, productName, description, productSKU, productBarcode, category, attributes,
+//     //         attributesValue, price, salePrice, productQuantity, productSlug, productTags
+//     //     }, {
+//     //         new: true,
+//     //     })
+//     //         .then(() => {
+//     //             res.json({
+//     //                 msg: "Product Updated Successfully",
+//     //             });
+//     //         })
+//     //         .catch(error => {
+//     //             console.log(error);
+//     //             res.json({ error: "Failed to Perform Update Operation" });
+//     //         });
+//     // })
 // };
 
 const updateProduct = (req, res) => {
-    upload.single('myImage')(req, res, async (err) => {
-        const myImage = req.file.filename;
-        const { productName, description, productSKU, productBarcode, category, attributes,
+    handleMultipartData(req, res, async (err) => {
+        const filePath = req.file ? req.file.path : null; // Check if a new image is provided
+        const myImage = req.file ? req.file.originalname : null; // Get the new image file name if provided
+        const {
+            productName, description, productSKU, productBarcode, category, attributes,
             attributesValue, price, salePrice, productQuantity, productSlug, productTags
         } = req.body;
-        ProductModel.findByIdAndUpdate(req.params.id, {
-            myImage, productName, description, productSKU, productBarcode, category, attributes,
-            attributesValue, price, salePrice, productQuantity, productSlug, productTags
-        }, {
-            new: true,
-        })
-            .then(() => {
-                res.json({
-                    msg: "Product Updated Successfully",
-                });
-            })
-            .catch(error => {
-                console.log(error);
-                res.json({ error: "Failed to Perform Update Operation" });
+
+        if (filePath && myImage) {
+            cloudinary.v2.uploader.upload(filePath, {
+                productName, description, productSKU, productBarcode, category, attributes,
+                attributesValue, price, salePrice, productQuantity, productSlug, productTags,
+                public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+            }, async (error, result) => {
+                if (error) {
+                    return res.status(400).json({
+                        status: "Failed",
+                        error: error.message
+                    });
+                }
+
+                if (result.secure_url) {
+                    updateProductDetails(req, res, result.secure_url);
+                } else {
+                    res.status(400).json({
+                        status: "Failed",
+                        error: "Invalid Cloudinary response"
+                    });
+                }
             });
-    })
+        } else {
+            updateProductDetails(req, res, null);
+        }
+    });
 };
+
+const updateProductDetails = (req, res, newImageURL) => {
+    const {
+        productName, description, productSKU, productBarcode, category, attributes,
+        attributesValue, price, salePrice, productQuantity, productSlug, productTags
+    } = req.body;
+    const updateData = {
+        productName, description, productSKU, productBarcode, category, attributes,
+        attributesValue, price, salePrice, productQuantity, productSlug, productTags
+    };
+    if (newImageURL) {
+        updateData.myImage = newImageURL;
+    }
+
+    ProductModel.findByIdAndUpdate(req.params.id, updateData, { new: true })
+        .then(() => {
+            res.json({
+                msg: "Product Updated Successfully",
+            });
+        })
+        .catch(error => {
+            console.log(error);
+            res.json({ error: "Failed to Perform Update Operation" });
+        });
+};
+
 
 // Delete the Poducts 
 const deleteProduct = async (req, res) => {

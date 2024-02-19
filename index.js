@@ -23,7 +23,7 @@ if(process.env.NODE_ENV === 'developement'){
 }
 
 const app = express();
-const PORT = process.env.PORT || 4321;
+const PORT = process.env.PORT || 4300;
 
 connectDatabase();
 

@@ -1,16 +1,14 @@
 const CategoriesModel = require("../model/Categories.model");
 const ProductModel = require("../model/Product.model");
 const multer = require('multer');
+const cloudinary = require('cloudinary')
 
 const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
-      cb(null, './images');
-  },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
   }
 });
-const upload = multer({ storage: storage });
+const handleMultipartData = multer({ storage: storage }).single('myImage');
 
 // Get All Categories
 const getAllCategories = async (req, res) => {
@@ -71,21 +69,40 @@ const getSpecificCategoryProduct = async (req, res) => {
 
 //Add the Categories
 const addCategories = (req, res) => {
-  const catName = req.body.catName;
-  const myImage = req.file.filename;
-  upload.single('myImage')(req, res, async (err) => {
-    try {
-      const newCategory = await CategoriesModel.create({ catName, myImage });
-      res.status(201).json({
-        status: "Success",
-        data: newCategory,
-      });
-    } catch (error) {
-      res.status(400).json({
-        status: "Failed",
-        error: error.message,
-      });
-    }
+  handleMultipartData(req, res, async (err) => {
+    const filePath = req.file.path;
+    const catName = req.body.catName;
+    const myImage = req.file.originalname;
+    cloudinary.v2.uploader.upload(filePath, {
+      public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+    }, async (error, result) => {
+      if (error) {
+        return res.status(400).json({
+          status: "Failed",
+          error: error.message
+        });
+      }
+
+      if (result.secure_url) {
+        try {
+          const newCategory = await CategoriesModel.create({ catName, myImage: result.secure_url });
+          res.status(201).json({
+            status: 'Success',
+            data: newCategory
+          });
+        } catch (error) {
+          return res.status(500).json({
+            status: "Failed",
+            error: "Error saving to database"
+          });
+        }
+      } else {
+        res.status(400).json({
+          status: "Failed",
+          error: "Invalid Cloudinary response"
+        });
+      }
+    });
   });
 }
 
@@ -109,23 +126,95 @@ const updateCategoryVisble = async (req, res) => {
 };
 
 // Update the Product
+// const updateCategory = (req, res) => {
+//   handleMultipartData(req, res, async (err) => {
+//     const filePath = req.file.path;
+//     const catName = req.body.catName;
+//     const myImage = req.file.originalname;
+//     cloudinary.v2.uploader.upload(filePath, {catName,
+//       public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+//     }, async (error, result) => {
+//       if (error) {
+//         return res.status(400).json({
+//           status: "Failed",
+//           error: error.message
+//         });
+//       }
+
+//       if (result.secure_url) {
+//         CategoriesModel.findByIdAndUpdate(req.params.id, { catName, myImage: result.secure_url },
+//           {
+//             new: true,
+//           })
+//           .then(() => {
+//             res.json({
+//               msg: "Product Updated Successfully",
+//             });
+//           })
+//           .catch(error => {
+//             console.log(error);
+//             res.json({ error: "Failed to Perform Update Operation" });
+//           });
+//       } else {
+//         res.status(400).json({
+//           status: "Failed",
+//           error: "Invalid Cloudinary response"
+//         });
+//       }
+//     });
+//   });
+// };
 const updateCategory = (req, res) => {
-  upload.single('myImage') (req, res, async (err) => {
+  handleMultipartData(req, res, async (err) => {
+    const filePath = req.file ? req.file.path : null;
+    const myImage = req.file ? req.file.originalname : null;
     const catName = req.body.catName;
-    const myImage = req.file.filename;
-  CategoriesModel.findByIdAndUpdate(req.params.id, { catName, myImage }, {
-    new: true,
-  })
+
+    if (filePath && myImage) {
+      cloudinary.v2.uploader.upload(filePath, {
+        catName,
+        public_id: myImage.substr(0, myImage.lastIndexOf('.')),
+      }, async (error, result) => {
+        if (error) {
+          return res.status(400).json({
+            status: "Failed",
+            error: error.message
+          });
+        }
+
+        if (result.secure_url) {
+          updateCategoryDetails(req, res, result.secure_url);
+        } else {
+          res.status(400).json({
+            status: "Failed",
+            error: "Invalid Cloudinary response"
+          });
+        }
+      });
+    } else {
+      updateCategoryDetails(req, res, null);
+    }
+  });
+};
+const updateCategoryDetails = (req, res, newImageURL) => {
+  const { catName } = req.body;
+  const updateData = { catName };
+
+  if (newImageURL) {
+    updateData.myImage = newImageURL;
+  }
+
+  CategoriesModel.findByIdAndUpdate(req.params.id, updateData, { new: true })
     .then(() => {
       res.json({
-        msg: "Product Updated Successfully",
+        msg: "Category Updated Successfully",
       });
     })
     .catch(error => {
       console.log(error);
       res.json({ error: "Failed to Perform Update Operation" });
     });
-})};
+};
 
 // Delete the Poducts
 const deleteCategory = async (req, res) => {
